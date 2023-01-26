@@ -2,10 +2,14 @@
 #include <fstream>
 #include <iterator>
 #include <vector>
+#include <algorithm>
 #include <bitset>
 #include <intrin.h>
+#include "hashpp.h"
 
 using namespace std;
+using namespace hashpp;
+
 #define OCCURRENCES_SIZE 256
 
 struct chiSquareResult {
@@ -133,6 +137,25 @@ double mean(vector<unsigned char>& buffer) {
     return meanValue / (double)buffer.size();
 }
 
+uint64_t FNV1(vector<unsigned char>&buffer) {
+    const uint64_t FNV_offset_basis = 14695981039346656037;
+    const uint64_t FNV_prime = 1099511628211;
+    
+    uint64_t hash = FNV_offset_basis;
+    
+    for (unsigned int i = 0; i < buffer.size() - 1; i++) {
+        buffer[i] ^= buffer[i + 1];
+    }
+
+    for (unsigned int i = 0; i < buffer.size(); i++) {
+        hash = hash ^ buffer[i];
+        hash = hash * FNV_prime;
+    }
+
+    return hash;
+}
+
+
 void testSuite(vector<unsigned char>& buffer, string name) {
     chiSquareResult chisquarebyte = chiSquareGOFbyte(buffer);
     chiSquareResult chisquarebit = chiSquareGOFbit(buffer);
@@ -143,13 +166,43 @@ void testSuite(vector<unsigned char>& buffer, string name) {
     cout << "Mean:                       " << mean(buffer) << " (expected 127.5)" << endl;
     cout << "X^2 critical value (byte):  " << chisquarebyte.criticalValue << " df=" << chisquarebyte.df << endl;
     cout << "X^2 critical value (bit):   " << chisquarebit.criticalValue << " df=" << chisquarebit.df << endl;
+    cout << "MD-2 Hash:                  " << get::getHash(ALGORITHMS::MD2, string(buffer.begin(), buffer.end())) << endl;
     cout << endl;
+}
+
+void testCollision() {
+    vector<unsigned char> tempbuf(2048);
+    vector<uint64_t> fnvarray(2048 * 256);
+    for (unsigned int i = 0; i < 2048; i++) {
+        if ((i & 0xFF) == 0) {
+            cout << i << "th checkpoint in hashing" << endl;
+        }
+        for (unsigned int j = 0; j < 256; j++) {
+            tempbuf[i] = j;
+            fnvarray[i * 256 + j] = FNV1(tempbuf);
+            //fnvarray[i * 256 + j] = get::getHash(ALGORITHMS::MD2, string(tempbuf.begin(), tempbuf.end())).getString();;
+        }
+    }
+
+    sort(fnvarray.begin(), fnvarray.end());
+    uint64_t collisions = 0;
+    for (unsigned int i = 0; i < 2048 * 256 - 1; i++) {
+        if ((i & 0xFFFF) == 0) {
+            cout << i << "th checkpoint in collisions" << endl;
+        }
+        if (fnvarray[i] == fnvarray[i + 1]) {
+            collisions++;
+            cout << "Collision at: " << fnvarray[i] << " with an index of " << i << endl;
+        }
+    }
+
+    cout << "Collisions: " << collisions << endl;
 }
 
 int main()
 {
-    const unsigned int bufsize = 4096;
-    cout << "===== Random Number Test Suite - Stefan =====\n\n";
+    const unsigned int bufsize = 2048;
+    cout << "===== Random Number Test Suite =====\n\n";
     string name = "Random.org Dataset";
     vector<unsigned char> fixedbuf(bufsize);
     vector<unsigned char> buffer = openFileAndReturnBuffer("RandomNumbers");
@@ -159,10 +212,17 @@ int main()
     testSuite(fixedbuf, name);
 
     name = "Unconditioned Test Data";
-    buffer = openFileAndReturnBuffer();
-    for (unsigned int i = 0; i < fixedbuf.size(); i++) {
-        fixedbuf[i] = buffer[i];
+    vector<unsigned char> buffer2 = openFileAndReturnBuffer();
+    vector<unsigned char> fixedbuf2(bufsize);
+    for (unsigned int i = 0; i < fixedbuf2.size(); i++) {
+        fixedbuf2[i] = buffer2[i];
     }
-    testSuite(fixedbuf, name);
+    testSuite(fixedbuf2, name);
 
+    name = "Hashed Test Data";
+    string tempstr = get::getHash(ALGORITHMS::MD2, string(fixedbuf.begin(), fixedbuf.end())).getString();
+    vector<unsigned char> minibuf(tempstr.begin(), tempstr.end());
+    testSuite(minibuf, name);
+
+    testCollision();
 }
